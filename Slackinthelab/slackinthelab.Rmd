@@ -1,0 +1,155 @@
+---
+title: "Slack usage in our lab"
+author: "Sander Wuyts"
+date: "October 25, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(forcats)
+knitr::opts_chunk$set(fig.width=8, fig.height=6)
+Sys.setlocale("LC_TIME","C")
+```
+
+# Introduction
+
+[Slack](https://slack.com/) is a free to use communication platform for teams that allows its members to easily send messages, share files and manage to do lists. As usual, when I hear that people are excited about a new tool or app, I can't wait to test it out. So I introduced Slack to some of my colleagues, we set up a team for our lab and tried it out for a couple of days. It was not a succes. However, almost one year later the use of Slack within research labs definitely rose in popularity after the Nature editorial '[How scientists use Slack](https://www.nature.com/news/how-scientists-use-slack-1.21228)' (29 december 2019). So I gave it another shot, convinced everybody in the lab including our PI [@sarahlebeer](https://twitter.com/sarahlebeer?lang=en) during our weekly labmeeting and created a new team. Apparently I was not the only one who got inspired by this article as by the end of january I was part of 4 different teams.
+
+https://twitter.com/s_wuyts/status/825760717127159808
+
+Now, 10 months later, our lab heavily uses Slack as a platform to discuss our different research projects, share the latest hot research papers and remind us of general lab duties. Time to evaluate our usage!
+
+# Data collection
+
+Team owners have access to their Slack analytics page, which shows a couple of great graphs. However, the free plan that we use has limited functionality. Luckily, Slack has a shiny cool button on the top right of their analytics page saying 'Export to csv'. Great! That's way more usefull than the parser I wrote to get some statistics from the 'Weekly Update' e-mail that Slack sends. So I used this csv, read in the data in R and (of course) made it [tidy](http://vita.had.co.nz/papers/tidy-data.html).
+
+```{r}
+slackdf <- read_csv("in/LAMB Slack Analytics Oct 26 2017.csv")
+```
+
+# Users and channels
+
+Like I said above, Slack was adopted pretty fast and in mid January all of our 14 lab members joined the team. During summer, we had an intern during who was also invited to Slack and later removed again. Furthermore, the amount of channels seemd to increase from adoption until May. Then, apparently, we did not feel the need to create any new channels anymore up until August. In the beginning of October channel creation boomed again, mainly due to our lab technician who set up a few channels for reminders.  
+
+```{r, fig.height = 4}
+slackdf %>%
+  select(Date, `Total Users`, `Public Workspace Channels`) %>%
+  gather(key = "Type", value = "Count", - Date) %>%
+  ggplot(aes(x = Date, y = Count, colour = Type)) +
+  geom_point() +
+  geom_line(alpha = 0.5) +
+  expand_limits(y = 0)  +
+  scale_x_date(date_breaks = "1 month", date_labels = "%B") +
+  scale_color_brewer(palette = "Dark2") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) 
+```
+
+Now let's have a look at the amount of Daily active users:
+
+```{r, fig.height = 6, fig.width = 8}
+slackdf %>%
+  select(Date, `Daily Active Users`) %>%
+  mutate(weekDay = wday(Date, label =T),
+         month = month(Date, label =T),
+         weekDay = fct_relevel(weekDay, "Sun", after = 6)) %>%
+  ggplot(aes(x = month, y = `Daily Active Users`, colour = weekDay)) +
+  geom_point(alpha = 0.6, position = position_jitterdodge()) +
+  geom_boxplot(aes(fill = weekDay), alpha = 0.5) + 
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  expand_limits(y = 0)  +
+  guides(colour = guide_legend(nrow = 1 )) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank())
+```
+
+  The first thing that I've noticed is the reduction in active users on Saturday and Sunday. Good thing that we focus on other stuff in the weekend! Furthermore, it's easy to spot when the university is closed. For example, one monday in April shows only 4 active users which I traced down to be Easter Monday. Similarly, Labour day and Ascencion day/weekend reduced the activitiy on Slack in May for a Monday, Thursday and Friday. Also, most of us take holidays during July or August, two months that show much more variablity regarding activity on weekdays. And finally, everybody seemed to got tired of all these holidays as September and October shows a high activity again (even on Sundays in October)!
+  
+
+# Messages
+
+```{r, fig.height=4}
+slackdf %>%
+  select(Date, `Messages Posted`) %>%
+  ggplot(aes(x = Date, y = `Messages Posted`)) +
+  geom_point() +
+  geom_line(alpha = 0.5) +
+  expand_limits(y = 0)  +
+  scale_x_date(date_breaks = "1 month", date_labels = "%B") +
+  scale_color_brewer(palette = "Dark2") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) 
+```
+
+In total our team posted around 25 000 messages. The beginning of June seems to show an increase in posted messages, probably due to the fact that [@swittouck CHECK LINK](https://twitter.com/swittouck?lang=en) and me, both heavy slack users, were finalising our joint publication (more about that publication [here](https://swuyts.wordpress.com/2017/10/16/from-research-stay-to-paper-in-one-year-story-behind-my-first-first-author-paper/)). Again, holiday season (July and August) can be detected here as the increase in amount of posted messages stagnates during that period.
+
+```{r, fig.height = 4}
+slackdf %>%
+  select(Date, `% of Messages Posted in Public Channels`, `% of Messages Posted in DMs`) %>%
+  gather(key = "Type", value = "Count", - Date) %>%
+  group_by(Date) %>%
+  filter(Count > 0 ) %>% 
+  ggplot(aes(x = Date, y = Count)) +
+  geom_area(aes(fill=Type)) +
+  expand_limits(y = 0)  +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%B") +
+  scale_fill_brewer(palette = "Paired") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        legend.position = "bottom",
+        legend.title = element_blank()) 
+```
+
+Finally, this dataset also contains the % of messages posted in Public Channels and % of messages which are Direct Messages. At first it was a bit surprising to me that in general our team seems to prefer sending DMs than posting in Public Channels. However, when I thought about it, I must say that I often use Slack to ask quick questions to one single team member or to send over a file using direct message instead of disturbing everybody using a public channel.  
+
+
+  To conclude, I'd like to say that I really love the way our team uses Slack. It improved our communication and took away some heavy load from our (and especially our PIs) mailbox. If you're not using it yet in your team, definitily give it a shot!
+  
+
+All data was analysed using R and [Tidyverse packages](https://www.tidyverse.org/). An R markdown file containing all code can be found on Github (LINK).
+
+# Extra figures
+
+```{r}
+slackdf %>%
+  select(Date, `Messages in Public Channels`, `Messages in DMs`) %>%
+  gather(key = "Type", value = "Count", - Date) %>%
+  mutate(weekDay = wday(Date, label =T),
+         month = month(Date, label =T),
+         weekDay = fct_relevel(weekDay, "Sun", after = 6)) %>%
+  ggplot(aes(x = month, y = Count, colour = weekDay)) +
+  geom_point(alpha = 0.6, position = position_jitterdodge()) +
+  geom_boxplot(aes(fill = weekDay), alpha = 0.5) + 
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  expand_limits(y = 0)  +
+  guides(colour = guide_legend(nrow = 1 )) +
+  theme(legend.position = "bottom",
+        legend.title = element_blank()) +
+  facet_wrap(~Type, nrow = 2, scales = "free_y")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
