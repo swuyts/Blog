@@ -47,3 +47,39 @@ df %>% group_by(Universiteit) %>%
 ggsave("FWO_SB_2017.png")
 ```
 
+# Update after tweet Pieter Meysman
+
+Try to normalise by amount of ZAP/Professors.   
+
+Source:
+
+* UAntwerpen: https://www.uantwerpen.be/nl/overuantwerpen/feiten-en-cijfers/ 
+* KU Leuven: https://www.kuleuven.be/communicatie/marketing/publicaties/infocus-uk.pdf 
+* UGent: https://www.ugent.be/nl/univgent/organisatie/feiten 
+* VUB: https://www.vub.ac.be/over/feiten 
+* UHasselt: https://www.uhasselt.be/Jaarverslagen 
+
+```{r}
+# Update
+professors <- tibble(Universiteit = c("UAntwerpen", "KU Leuven", "UGent", "VUB", "UHasselt"), 
+                     NumberZAP = c(624, 1561, 1502, 402, 392))
+
+df %>% group_by(Universiteit) %>%
+  summarise(Total_projects = n()) %>%
+  ungroup() %>%
+  left_join(professors) %>%
+  mutate(normalized_count = Total_projects/(NumberZAP/100)) %>%
+  ggplot(aes(x = reorder(Universiteit, normalized_count), y = normalized_count)) +
+  geom_col() +
+  xlab("") +
+  ylab("Amount of FWO-SB projects per 100 professors") +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 16, face = "bold"))
+
+ggsave("FWO_SB_2017_per100prof.png")
+  
+```
+
+
+
