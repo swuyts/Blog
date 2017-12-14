@@ -1,0 +1,49 @@
+---
+title: "FWO"
+author: "Sander Wuyts"
+date: "December 14, 2017"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(pdftools)
+
+df <- pdf_text("SB-Beurs-2017.pdf") %>%
+  str_split(pattern = "\n") %>%
+  unlist() %>%
+  as_tibble() %>%
+  filter(str_detect(value, "18N")) %>% # select lines with project number in them
+  mutate(value = str_trim(value), # trim trailing spaces
+         value = if_else(str_sub(value, 1, 2) %in% str_c(LETTERS, " "),  # Remove letters
+                         str_sub(value, 3, -1),
+                         value)) %>%
+  separate(value, into = c("Mandaathouder", "Universiteit", "Aanvraagnummer"), fill = "right", sep = "\\s{2,}") %>%
+  mutate(Aanvraagnummer = if_else(is.na(Aanvraagnummer), # Not everything is parsed well so neet some tweaking
+                                  str_sub(Universiteit, -8,-1),
+                                  Aanvraagnummer),
+         Universiteit = if_else(str_detect(Universiteit, "18N"), # Split strings with project numbers in their University column
+                                str_sub(Universiteit, 1, -9),
+                                Universiteit),
+         Universiteit = if_else(Universiteit == "", # Split strings with University name in Mandaathouder column
+                                str_extract(Mandaathouder, "[A-z]+$"),
+                                Universiteit),
+         Universiteit = if_else(Universiteit == "Leuven", # Fix if only Leuven was put in the University column
+                                "KU Leuven",
+                                str_trim(Universiteit)))
+  
+  
+  
+df %>% group_by(Universiteit) %>%
+  summarise(Total_projects = n()) %>%
+  ggplot(aes(x = reorder(Universiteit, Total_projects), y = Total_projects)) +
+  geom_col() +
+  xlab("") +
+  ylab("Amount of FWO-SB projects") +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 16, face = "bold"))
+
+ggsave("FWO_SB_2017.png")
+```
+
