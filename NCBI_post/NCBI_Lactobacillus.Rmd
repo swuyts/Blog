@@ -1,0 +1,146 @@
+---
+title: "Lactobacillus: the most commonly sequenced non-pathogenic bacterial genus"
+author: "Sander Wuyts"
+date: "March 13, 2018"
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+# Collect data
+
+```{r}
+ncbi <- read.delim("ftp://ftp.ncbi.nlm.nih.gov/genomes/genbank/bacteria/assembly_summary.txt", sep = "\t", skip = 1) 
+
+lactos_ncbi <- ncbi %>%
+  filter(str_detect(organism_name, "Lactobacillus"))
+```
+
+# Analysis
+
+```{r}
+ncbi_plot <- lactos_ncbi %>%
+  group_by(seq_rel_date) %>%
+  summarise(count = n()) %>%
+  mutate(cum_sum = cumsum(count),
+         date = as_date(seq_rel_date)) 
+
+ncbi_plot %>%
+  ggplot(aes(x = date, y = cum_sum)) +
+  geom_line() +
+  geom_point() +
+  geom_vline(xintercept =  as_date("2016-12-18"), colour = "red") +
+  geom_vline(xintercept = as_date("2018-03-08"), colour = "red") +
+  theme_bw() +
+  ylab("Count") +
+  xlab("Date") +
+  ggtitle("NCBI: Number of available Lactobacillus assemblies")
+```
+
+```{r}
+ncbi_plot %>%
+  arrange(-count) %>%
+  head()
+```
+
+```{r, fig.width=8}
+lactos_ncbi %>%
+  filter(seq_rel_date %in% c("2015/11/06",
+                             "2017/08/15",
+                             "2017/02/01")) %>%
+  group_by(seq_rel_date, submitter) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x = seq_rel_date, y = count, group = submitter)) +
+  geom_col(aes(fill = submitter)) +
+  scale_fill_brewer(palette = "Dark2") +
+  coord_flip() +
+  xlab("") +
+  ylab("Count") +
+  ggtitle("Assembly submitters on days with highest increase") +
+  theme_minimal()
+```
+
+```{r, fig.width=10, fig.height=6}
+lactos_ncbi %>%
+  group_by(submitter) %>%
+  summarise(count = n()) %>%
+  arrange(-count) %>%
+  .[1:20,] %>% # Keep top 20 only
+  ggplot(aes(x = reorder(submitter, count), y = count)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw() +
+  xlab("") +
+  ylab("Count") +
+  ggtitle("NCBI: top 20 Lactobacillus submitters")
+
+```
+
+```{r, fig.width=10, fig.height=6}
+ncbi %>%
+  group_by(submitter) %>%
+  summarise(count = n()) %>%
+  arrange(-count) %>%
+  .[1:20,] %>% # Keep top 20 only 
+  ggplot(aes(x = reorder(submitter, count), y = count)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw() +
+  xlab("") +
+  ylab("Count") +
+  ggtitle("NCBI: top 20 bacterial assembly submitters")
+```
+
+```{r}
+ncbi %>% 
+  separate(organism_name, into = c("genus", "species"), extra = "drop", fill = "right") %>%
+  filter(genus != "Candidatus") %>%
+  group_by(genus) %>%
+  summarise(count = n()) %>%
+  arrange(-count) %>%
+  .[1:20,] %>% # Keep top 20 only %>%
+  ggplot(aes(x = reorder(genus, count), y = count)) +
+  geom_col() +
+  coord_flip() +
+  theme_bw() +
+  xlab("") +
+  ylab("Count") +
+  ggtitle("NCBI: top 20 most sequenced genera")
+```
+
+```{r, fig.width=10, fig.height=6}
+top20genera <- ncbi %>% 
+  separate(organism_name, into = c("genus", "species"), extra = "drop", fill = "right") %>%
+  filter(genus != "Candidatus") %>%
+  group_by(genus) %>%
+  summarise(count = n()) %>%
+  arrange(-count) %>%
+  .[1:12,] %>%
+  pull("genus")
+
+ncbi %>% 
+  separate(organism_name, into = c("genus", "species"), extra = "drop", fill = "right") %>%
+  filter(genus %in% top20genera) %>%
+  group_by(genus, seq_rel_date) %>%
+  summarise(count = n()) %>%
+  mutate(cum_sum = cumsum(count),
+         date = as_date(seq_rel_date)) %>%
+  ungroup() %>%
+  mutate(genus = fct_relevel(genus, top20genera)) %>%
+  ggplot(aes(x = date, y = cum_sum, colour = genus)) +
+  geom_line(aes(group = genus), size = 1.5) +
+  geom_line(data = ncbi_plot, aes(x = date, y = cum_sum), colour = "black", size = 1.5) + # Add lactos
+  geom_vline(xintercept =  as_date("2016-12-18"), colour = "red", alpha = 0.4) +
+  geom_vline(xintercept = as_date("2018-03-08"), colour = "red", alpha = 0.4) +
+  scale_colour_brewer(palette = "Paired") +
+  theme_bw() +
+  ylab("Count") +
+  xlab("Date") +
+  ggtitle("NCBI: Top 12 most sequenced genera and Lactobacillus")
+
+```
+
