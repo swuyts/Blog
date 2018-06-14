@@ -1,0 +1,258 @@
+---
+title: "2018 World Cup team"
+author: "Sander Wuyts"
+date: "June 12, 2018"
+output: html_document
+---
+
+# Data collection
+
+```{r}
+library(tidyverse)
+library(rvest)
+
+# Read in the website
+site <- read_html("https://en.wikipedia.org/wiki/2018_FIFA_World_Cup_squads") 
+
+# Parse website for player tables
+players <- site %>%
+  html_table(fill = T) %>%
+  .[1:32] # Keep only the tables related to the 32 teams
+
+# Parse website for team names
+teams <- site %>%
+  html_nodes("h3 .mw-headline") %>%
+  html_text() %>%
+  .[1:32] # keep only the first 32 hits
+
+# Parse website for coach names
+coaches <- site %>%
+  html_nodes("h3+ p") %>%
+  html_text() %>%
+  .[1:32] %>% # Keep only the first 32 hits
+  str_replace_all("Coach: ", "") %>% # Clean up the string
+  str_trim() # remove leading whitespaces
+
+# Parse website to figure out in which group the team competes
+group <- site %>%
+  html_nodes("h2 .mw-headline") %>%
+  html_text() %>%
+  .[1:8] %>% # Keep only the first 8 hits
+  rep(4) %>% # Make the group vector match the team vector
+  sort()
+```
+
+Now that we have all of the tables separatly, let's combine them into one
+
+```{R}
+table <- tibble(team = teams,
+                         coach = coaches,
+                         group = group,
+                         player = players) %>%
+  unnest() %>% # The players table was a list, we need to unnest this
+  rename(position = `Pos.`) %>%
+  mutate(position = str_sub(position, 2,3)) %>% # Fix parsing error
+  rename(age = `Date of birth (age)`) %>%
+  mutate(age = as.integer(str_sub(age,-4, -2)))
+```
+
+Nice! Now that we have a final table we can start exploring the data! We have the following information from each player:
+- Team
+- Position
+- Age
+- Caps
+- Goals
+- Club
+
+# The youngest players
+
+```{r}
+table %>%
+  arrange(age) %>% # Sort on age
+  .[1:10,] %>% # Select top 10
+  mutate(Player = factor(str_c(Player, "(", age,")"))) %>% # Add age to the players name for plotting
+  ggplot(aes(x = fct_reorder(Player, Goals), y = Goals)) + # Start plotting
+  geom_col(aes(fill = team)) + # Add bars
+  geom_text(aes(y = -0.3, label = position, colour = team)) + # Add text that shows their position
+  scale_colour_brewer(palette = "Dark2") + # Change colour scheme
+  scale_fill_brewer(palette = "Dark2") + # Change colour scheme
+  coord_flip() + # Flip x and y axis
+  xlab("") + # remove label on y-axis
+  ggtitle("Youngest players in the World Cup") + # Add title to the plot
+  theme_minimal() + # Use a different theme
+  theme(panel.grid = element_blank()) # Tweak the theme a little bit
+```
+
+Allright, this 19 year old Kylian Mbappé from France seems to be doing a great job! Who knows, he'll end up in my team!
+
+# Oldest player
+
+For the oldest players, I just have to reverse the arrange function and get the same result!
+
+```{r}
+table %>%
+  arrange(-age) %>%
+  .[1:10,] %>%
+  mutate(Player = factor(str_c(Player, "(", age,")"))) %>%
+  ggplot(aes(x = fct_reorder(Player, Goals), y = Goals)) +
+  geom_col(aes(fill = team)) +
+  geom_text(aes(y = -2, label = position, colour = team)) +
+  scale_colour_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  coord_flip() +
+  xlab("") + 
+  ggtitle("Oldest players in the World Cup") + 
+  theme_minimal() +
+  theme(panel.grid = element_blank()) 
+```
+
+Cool! There seem to be 4 goal keepers in this list, none of them scored a goal. In addition, Tim Cahill is the one of the oldest players in the world cup with the most amount of goals!
+
+# What team has the highest median number of caps
+
+```{r fig.height=6}
+table %>%
+  mutate(team = as_factor(team)) %>%
+  ggplot(aes(x = fct_reorder(team, Caps), y = Caps)) +
+  geom_boxplot(outlier.alpha =  0) +
+  geom_point(alpha = 0.6) +
+  coord_flip() +
+  xlab("") +
+  theme_minimal() +
+  ggtitle("Number of caps per team")
+```
+
+It's a little bit over plotted but wow, this is good news! Belgium tops the list and thus has the highest median number of caps. While one could probably interpret this graph in many different ways, to me this means that we're the most experienced team and thus have a high chance of doing a pretty good job. Or at least, that's what I choose to believe.
+
+# Team selection
+
+
+For my team I've decided to go for a 3-4-3 formation because well eeeeuhh.... Just for no reason actually.
+
+I will also start by recruiting midfield players, because back in the days when I played football, I always played that position.
+
+## Midfield
+
+There's 234 people to choose from. Let's go for the obvious ones, the ones that scored the most
+
+```{r}
+table %>%
+  filter(position == "MF") %>%
+  arrange(-Goals)
+```
+
+The first player I wanted to recruit was the top scorer, Thomas Müller, but apparently he's annotated as a forward on the Sporza game. So unfortunately we can't use him on this position.
+
+-So let's recruit the second in line: Keisuke Honda! Welcome to the team!
+-The third in line is also from Japan, which does not seem like a good choice in this phase of the game, so let's go for the captain of the Mexican squad Andrés Guardado!
+- Up next, from Costa Rica, also the captain: Bryan Ruiz!
+- Our final position, does not go to Özil as Germany is in the same group as Costa Rica and I do not want too much competition within the team, so give a round of applause for Denmark's own Christian Eriksen!
+
+All players are in the top 8 teams regarding their median number of caps (see above), so that's a good sign!
+
+```{r}
+# Add players to selection
+table <- table %>%
+  mutate(selected = if_else(Player %in% c("Keisuke Honda", "Andrés Guardado (captain)", "Bryan Ruiz (captain)", "Christian Eriksen"), "YES", "NO")) %>%
+  mutate(position = if_else(Player == "Thomas Müller", "FW", position)) # Fix muller
+``` 
+
+## Defenders
+
+Up next: 3 defenders! Again, I will go for the defenders that scored the highest number of goals. This is actually almost the only option I've got with the data I've collected.  
+
+```{r}
+table %>%
+  filter(position == "DF") %>%
+  arrange(-Goals)
+```
+
+- The top goalscorer is again a Mexican: Rafael Màrquez. Of course, a good scientists always blasts his sequence first coach always googles his players first before picking them for their team. Doing this, I found that Màrquez had been banned for playing for his club Atlas for the last 2 months. So maybe that's not such a strategic choice. Sorry Màrquez!
+- Instead, I will go for Sergio Ramos!
+- Unlucky for Branislav Ivanovic, but I will skip a Serbian player, as they are at the bottom of our "Number caps per team"-graph.
+- Although the fact that Bruno Alves (Portugal) is in the same group as Sergio Ramos (Spain; group B), I will still go for him as I think that both Spain and Portugal have a chance of getting through the first round!
+- My final player will not be from Panama as they are in the same group as Belgium and I do not think Panama will survive.
+
+So excluding all the players above and the teams from which I've already picked a player, I will now focus only on the players with 8 goals and see whether there's a good fit there:
+
+```{r}
+table %>%
+  filter(position == "DF") %>%
+  arrange(-Goals) %>%
+  filter(Goals == 8)
+```
+
+Well, this is a little bit more arbitrary, but as a Belgian, I can't ignore Jan Vertonghen on this list. So welcome to the team *Jan Vertonghen*!
+
+
+```{r}
+# Add players to selection
+table <- table %>%
+  mutate(selected = if_else(Player %in% c("Jan Vertonghen", "Sergio Ramos (captain)", "Bruno Alves"), "YES", selected))
+```
+
+## Forwards
+
+That leaves space for three forwards!
+
+```{r}
+table %>%
+  filter(position == "FW") %>%
+  arrange(-Goals)
+```
+
+Oh, this is definitely harder. Let's make it a little bit easier by looking at what groups we already chose our players in:
+
+```{r}
+table %>%
+  filter(selected == "YES") %>%
+  group_by(group) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x = group, y = count)) +
+  geom_col() +
+  coord_flip()
+  
+```
+
+PLayers from group A and D are missing!
+
+- Argentina is in group D, and *Lionel Messi* plays for Argentina. So welcome to him!
+- Uruguay is in group A, and *Luis Suárez* plays for Uruguay. I'll hapily make space for him!
+- Now that every group is represented, we'll have to pick a player that's already in one of these groups. Starting back at the top, we can't go for Ronaldo as the count in group B would then be 3. So the next in line is *Neymar* from Brazil!
+
+```{r}
+# Add players to selection
+table <- table %>%
+  mutate(selected = if_else(Player %in% c("Lionel Messi (captain)", "Neymar (captain)", "Luis Suárez"), "YES", selected))
+```
+
+
+# GK
+
+Time to choose our final player: the Goalkeeper!
+
+```{r}
+table %>%
+  filter(position == "GK") %>%
+  arrange(-Caps, -age)
+```
+
+It makes a lot of sense that of all goalkeepers, not a single one has scored a goal. This means that choosing a keeper will be practically impossible with the data we have.
+
+Therefore I'll just go for our national hero: Thibaut Courtois!
+
+```{r}
+table <- table %>%
+  mutate(selected = if_else(Player %in% c("Thibaut Courtois"), "YES", selected))
+```
+
+
+## Final team
+
+```{r}
+table %>%
+  filter(selected == "YES")
+```
+
+
+I'm pretty sure I will do a terrible job in our competition, but at least I've learned how to scrape a Wikipedia page using R.
