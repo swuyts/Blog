@@ -1,0 +1,292 @@
+---
+title: "Comparative paperomics"
+author: "Sander Wuyts"
+date: "25 July 2018"
+output: html_document
+---
+
+# Introduction
+
+At the end of May, I was happy to hear that my second first-author paper, entitled [Carrot juice fermentations as man-made microbial ecosystems dominated by lactic acid bacteria](http://aem.asm.org/content/84/12/e00134-18.full) was published in Applied and Environmental Microbiology. I'm especially proud on this manuscript as we used different molecular (DNA vs RNA based 16S sequencing), analytical (HPLC-RI and HPAEC-PAD) and bioinformatical (DADA2 processing and phylogenetic placement) techniques. In addition, this paper was based on data which we obtained from our citizen-science project, [Ferme Pekes](https://www.uantwerpen.be/nl/projecten/ferme-pekes/). We launched this project 2.5 years ago by asking 40 different people from the Antwerp region to ferment their own carrots at home and bring in samples at regular time points. We got quite some press coverage for this project at that time, which was a plus as communicating your science to a broader audience really makes you rethink everything your doing in the lab.
+
+While the carrot juice manuscript was the first one that I started writing, it wasn't the first one that got published. That honour goes to our Lactobacillus casei group paper, which I co-authored with Stijn Wittouck and was published last year (more about that here). That means that I'm now main author of two papers. Two papers also means that they can be compared. And comparing things has become one of my specialties, the last few years.
+
+Therefore, in this blogpost I will present to you my first comparative paperomics approach!
+
+# Metadata analysis
+
+One of the first things I learned when writing scientific manuscripts was labeling different versions. This is extremely useful in the case you have to retrieve certain parts that you had to delete for "word limit" or "This might be interesting but is irrelevant for the story now"-reasons. I always labeled my files using the DATE_MANUSCRIPTNAME_LASTEDITOR.docx/odt format. This led to a folder that looks somewhat like this:
+
+PHOTO!
+
+Currently, I'm writing my PhD-thesis in LaTeX, but these two manuscripts were drafted in Microsoft Word and/or LibreOffice. This led to many different ".docx" and ".odt" files. While I love writing in LaTeX I'm actually quite happy that I wrote these papers in Word/LO, as a lot of extra metadata is stored within these file formats. And it's that metadata that I'll be using here to perform my comparative paperomics!
+
+## Data collection
+
+A Word document is basically a .zip file that contains your main text and several other files it needs for formatting. To extract the data I'm interested in, I wrote a small bash script that unzips every ".docx" file and copies the "app.xml" file in the docProps folder:
+
+```
+#!/bin/bash
+
+for file in data/fermentation/*docx; do
+	filename=${file##*/}
+	filename=${filename%.docx}
+
+	unzip $file -d data/fermentation_out/$filename
+	mv data/fermentation_out/$filename/docProps/app.xml data/fermentation_out/$filename.xml
+	rm -rf data/fermentation_out/$filename
+done
+
+for file in data/caseigroup/*docx; do
+        filename=${file##*/}
+        filename=${filename%.docx}
+
+        unzip $file -d data/caseigroup_out/$filename
+        mv data/caseigroup_out/$filename/docProps/app.xml data/caseigroup_out/$filename.xml
+        rm -rf data/caseigroup_out/$filename
+done
+```
+
+Now for each version I've ended up with an xml file that looks like this:
+
+XML pic!
+
+The next step is of course data extraction from these xml files, and for this I will be using (can you guess?)...
+
+R!
+
+```{r}
+library(tidyverse)
+library(xml2)
+library(lubridate)
+library(tidytext)
+library(wordcloud)
+
+# Function to parse the XML file
+parse_xml <- function(xml_file){
+  xml <- read_xml(xml_file)
+  xml <- xml_ns_strip(xml)
+  
+  tibble(totalTime = xml_double(xml_find_first(xml, ".//TotalTime")),
+         pages = xml_double(xml_find_first(xml, ".//Pages")), 
+         words = xml_double(xml_find_first(xml, ".//Words")), 
+         characters = xml_double(xml_find_first(xml, ".//Characters")),
+         charactersWithSpaces = xml_double(xml_find_first(xml, ".//CharactersWithSpaces")),
+         lines = xml_double(xml_find_first(xml, ".//Lines")), 
+         paragraphs = xml_double(xml_find_first(xml, ".//Paragraphs")))
+}
+```
+
+fermentation
+
+```{R}
+# Parse all Fermentation paper files
+files <- str_c("data/fermentation_out/", list.files("data/fermentation_out/", pattern = "xml"))
+names(files) <- files
+
+
+fermentation <- map_df(files, parse_xml, .id = "filename") %>%
+  separate(filename, into = c("deleteme", "deleteme2", "filename"), sep = "/") %>%
+  mutate(date = filename) %>%
+  separate(date, into = c("date", "deleteme3"), sep = "_", extra = "drop") %>%
+  mutate(date = ymd(date)) %>%
+  select(- starts_with("deleteme")) %>%
+  mutate(paper = "Fermentation")
+
+```
+
+casei
+
+```{R}
+# Parse all Casei group paper files
+files <- str_c("data/caseigroup_out/", list.files("data/caseigroup_out/", pattern = "xml"))
+names(files) <- files
+
+
+casei <- map_df(files, parse_xml, .id = "filename") %>%
+  separate(filename, into = c("deleteme", "deleteme2", "filename"), sep = "/") %>%
+  mutate(date = filename) %>%
+  separate(date, into = c("date", "deleteme3"), sep = "_", extra = "drop") %>%
+  mutate(date = ymd(date)) %>%
+  select(- starts_with("deleteme"))%>%
+  mutate(paper = "Casei group")
+
+```
+
+```{r}
+# Merge in one tibble
+df <- fermentation %>%
+  bind_rows(casei) %>%
+  gather(key = "property", "count", -filename, - date, - paper)
+```
+
+# Analysis
+
+Allright, we got our data! Let's explore this dataset by plotting some of the variables:
+
+
+```{R fig.with=10, fig.height=6}
+df %>%
+  ggplot(aes(x = date, y = count, colour = paper)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~property, scales = "free_y") +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+```
+
+A lot of information all at once! But a quick glimpse to the shape of different plotted parameters reveals that most of them are highly correlated. For example, characters, charactersWithSpaces, lines, paragraphs and words, all show almost the exact same shape. It will thus be usefull to look only at one of them.
+
+Furthermore, this graph clearly shows that the timespan where we worked on the Fermentation manuscript (orange) was way longer than the timespan of the Casei group manuscript (green). This is due to a lot of reasons, but the main being that for the carrot juice fermentation paper we needed to perform a lot of extra wetlab experiments to answer novel questions that were raised during the drafting of the manuscript, while with the Casei group paper, this went a little bit smoother.
+
+This is also reflected if we sum up and plot the totalTime edited per paper:
+
+```{r}
+df %>%
+  filter(property == "totalTime") %>%
+  group_by(paper) %>%
+  summarise(totalTime = sum(count)) %>%
+  ggplot(aes(x = paper, y = totalTime, fill = paper)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_brewer(palette = "Dark2") +
+  ggtitle("Total time edited") +
+  xlab("") +
+  theme_minimal()
+```
+
+I'm guessing that the totalTime variable shows the amount of MINUTES worked on this document. I'm not sure how trustworthy the timer of Microsoft Word is, but there's definitely a clear difference between the two manuscripts. If we should take these numbers as reality, that means that we've spent a total of 3.8 days on writing the Casei group manuscript, while the Fermentation manuscrip took slightly more than 11 days!
+
+In a next step, let's have a short look at the number of words that were written.
+
+```{r}
+df %>%
+  filter(property == "words") %>%
+  ggplot(aes(x = date, y = count, colour = paper)) +
+  geom_point() +
+  geom_line() +
+  scale_color_brewer(palette = "Dark2") +
+  ggtitle("Number of words") +
+  theme_minimal()
+```
+
+This graph shows the pain of every PhD student (and author in general): writing a big chunk of text, that has to go later on. While this graph is probably biased by text written in comments, it does show two drastic reductions in the number of words for the Fermentation manuscript. The most pronounced one is the one near the end of 2017, when we were preparing the manuscript for submission.
+
+However, I'm a bit surprised by the difference in word count between both manuscripts. It seems unlikely that the Casei group paper has that many words compared to the carrot juice fermentation paper, especially as the official word count we provided to the journals were 5321 and 5533, respectively. I'm not sure what causes the high number of words in the Casei group paper but my guess is that something went wrong with the formatting of the references. Better quality control should probably fix this problem. 
+
+# Text mining
+
+The metadata analysis already revealed some unexpected patterns. But I'd like to dig a little bit deeper and look at the raw data: the words we've written! 
+
+## Data collection
+
+Data collection is a little bit easier here. For this analysis I've copy pasted the last version of each manuscript into a '.txt' file and imported that into R to analyze it with the awesome tidytext package!
+
+```{r}
+# List and read both .txt files
+papers <- list.files(path = "data/", pattern = "*.txt", full.names = T) %>% 
+        map_chr(~ read_file(.)) %>% 
+        data_frame(text = .) 
+
+# Split words per paper
+casei_txt <- papers %>%
+  .[1,] %>%
+  unnest_tokens(word, text) %>%
+  mutate(paper = "casei")
+
+ferm_txt <- papers %>%
+  .[2,] %>%
+  unnest_tokens(word, text) %>%
+  mutate(paper = "fermentation")
+
+# Join again and remove stop words
+papers_txt <- casei_txt %>%
+  bind_rows(ferm_txt) %>%
+  anti_join(stop_words)
+```
+
+# Analysis
+
+Now that we have our dataset ready, we can easily look at the most frequent words per paper. Let's start with the Casei group:
+
+```{r}
+papers_txt %>%
+  filter(paper == "casei") %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 20) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  theme_minimal() +
+  ggtitle("Word count casei group paper")
+```
+
+Well, that's not a surprise: casei is by far the most used word in this manuscript. It is followed by the word "clade", which is also not surprising for a phylogenomics manuscript.
+
+What about the fermentation paper?
+
+```{r}
+papers_txt %>%
+  filter(paper == "fermentation") %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 30) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() +
+  theme_minimal() +
+  ggtitle("Word count fermentation paper")
+```
+
+Well, the graph speaks for itself... This manuscript clearly talks a lot about fermentations, fermentation, Lactobacillus, carrot and juice.
+
+The most frequent word count does not really provide a lot of interesting insights. But what if we look at the most common pair of words?
+
+```{r, fig.width = 12, fig.height = 8}
+casei_txt_bigram <- papers %>%
+  .[1,] %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  mutate(paper = "casei")
+
+ferm_txt_bigram <- papers %>%
+  .[2,] %>%
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>%
+  mutate(paper = "fermentation")
+
+papers_txt_bigram <- casei_txt_bigram %>%
+  bind_rows(ferm_txt_bigram) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>%
+  count(word1, word2, paper, sort = T) %>%
+  unite(bigram, word1, word2, sep = " ")
+
+
+papers_txt_bigram %>%
+  filter(paper == "casei") %>%
+  with(wordcloud(bigram, n, max.words = 50, colors = brewer.pal(8, "Dark2")))
+```
+
+This is already a little bit more interesting! Besides the wordpair Lactobacillus casei, the most common combination of words is "oxidative stress"", one of the main topics we handle in the paper. Other examples include "casei ambr2" which is a strain we isolated from the "upper respiratory tract" or "seca2/secy2", which is the putative role of an interesting gene cluster we described.
+
+
+```{r, fig.width = 12, fig.height = 8}
+papers_txt_bigram %>%
+  filter(paper == "fermentation") %>%
+  with(wordcloud(bigram, n, max.words = 50, colors = brewer.pal(8, "Dark2")))
+```
+
+In the fermentation manuscript, "carrot juice" is obviously the most common word pair. It is followed by 16S rRNA which is the main technique we used to study the fermentation process. Other things that caught my eye are "phylogenetic placement", a technique we used to place our ASVs (~OTUs) on a phylogenetic tree or biogenic amines, a group of molecules that can cause naussia if they are too abundant in a fermented food product, which we also measured. In general, this wordcloud looks like a good graphical summary of our recent manuscript! Got interested? Check it out here!
+
+# Conclusion
+
+The field of comparative paperomics is still young. Many different computational methods will need to be developed to support this great new -omics technology. Nevertheless, in this proof of concept we've showed that i) I've authored two publications on which I'm very proud, ii) the fermentation manuscript took much longer to draft than the casei group manuscript for various reasons and finally, iii) using text mining we were able to get some preliminary insights into the content of these papers. 
+
+Alternatively, one could also go an read the abstracts, here and here.
+
+Thanks for reading, see you next time!
+
